@@ -1,0 +1,81 @@
+{
+  "manifest_version": "1",
+  "id": "pltt-video-studio-2",
+  "name": "Flow Video 2.0",
+  "version": "0.0.17",
+  "developer": "Palette",
+  "category": "Creative",
+  "tagline": "Turn ideas into videos — plan, generate, edit and export in one studio.",
+  "description": "Palette Flow Video 2.0: describe a video and pick a text model; the studio plans scenes, generates stills and clips (Kling, Seedance, LTX), and lets you edit the timeline — media library with characters and locations, camera paths, voice-over, music, captions — then exports an MP4.",
+  "icon": "Clapperboard",
+  "gradient": {
+    "bg": "linear-gradient(135deg, #1b1b1b, #d9a441)",
+    "text": "#fff"
+  },
+  "sdk": {
+    "frontend": "^0.1.16",
+    "backend": "^0.1.13"
+  },
+  "platform": {
+    "min_version": "0.1.0"
+  },
+  "capabilities": {
+    "frontend": true,
+    "backend": true,
+    "database": true,
+    "webhooks": false,
+    "scheduled_jobs": false,
+    "file_uploads": true,
+    "external_network": [
+      "fal.run",
+      "queue.fal.run",
+      "fal.media",
+      "v3.fal.media",
+      "api.runware.ai",
+      "api.ttapi.io",
+      "api.openai.com",
+      "generativelanguage.googleapis.com",
+      "api.anthropic.com",
+      "api.elevenlabs.io",
+      "router-api.pltt.ai"
+    ]
+  },
+  "database": {
+    "schema": "app_pltt_video_studio_2",
+    "migrations": "./backend/migrations"
+  },
+  "data_scope": "organization",
+  "platform_services": {
+    "storage": {},
+    "llm": { "models": ["claude-opus-5-5"], "max_output_tokens": 8192, "max_images": 4 },
+    "media": {}
+  },
+  "rate_limit": {
+    "per_minute": 240
+  },
+  "frontend": {
+    "entry": "./frontend/app",
+    "sandbox": true,
+    "framework": "palette-app"
+  },
+  "backend": {
+    "entry": "./backend/api/main.py"
+  },
+  "agents": [],
+  "tools": [],
+  "connections": [],
+  "permissions": [ "resources:read", "resources:write"],
+  "secrets": {
+    "FAL_KEY": { "scope": "plugin", "required": true, "label": "Fal API key (video + image generation)" },
+    "RUNWARE_KEY": { "scope": "plugin", "required": false, "label": "Runware API key (generation fallback)" },
+    "MIDJOURNEY_KEY": { "scope": "plugin", "required": false, "label": "Midjourney (TTAPI) key" },
+    "MIDJOURNEY_TT_API_KEY_FALLBACK": { "scope": "plugin", "required": false, "label": "Midjourney fallback key" },
+    "ANTHROPIC_API_KEY": { "scope": "plugin", "required": false, "label": "Anthropic API key (Claude text models)" },
+    "OPENAI_KEY": { "scope": "plugin", "required": false, "label": "OpenAI API key (GPT text model)" },
+    "GOOGLE_AI_API_KEY": { "scope": "plugin", "required": false, "label": "Google AI API key (Gemini text model)" },
+    "ELEVEN_API_KEY": { "scope": "plugin", "required": false, "label": "ElevenLabs API key (voice-over + music)" },
+    "LLM_ROUTER_ENABLED": { "scope": "plugin", "required": false, "label": "Use the Palette LLM router for images (true/false)" },
+    "LLM_ROUTER_API_KEY": { "scope": "plugin", "required": false, "label": "Palette LLM router API key" },
+    "LLM_ROUTER_BASE_URL": { "scope": "plugin", "required": false, "label": "Palette LLM router base URL" }
+  }
+}

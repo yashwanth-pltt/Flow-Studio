@@ -1,0 +1,22 @@
+[project]
+name = "palette-plugin-pltt-video-studio-2"
+version = "0.0.1"
+description = "Flow Video 2.0 — AI video planning, generation, editing and export Palette plugin"
+requires-python = ">=3.12"
+# palette-sdk is provided on PYTHONPATH by the Palette CLI (`pltt dev`,
+# `pltt test`) and by the platform runtime in hosted environments.
+dependencies = [
+    "fastapi>=0.129.0",
+    "sqlalchemy>=2.0.47",
+    # AsyncSession (palette_sdk, background sessions) needs greenlet
+    "greenlet>=3.0",
+    "pydantic>=2.0",
+    "httpx>=0.27",
+    "fal-client>=0.5",
+    "runware>=0.4",
+    "python-multipart>=0.0.9",
+    "anyio>=4.0",
+    "pillow>=10.0",
+    # ffmpeg fallback (scene render / export / thumbnails) when the host has no system ffmpeg
+    "imageio-ffmpeg>=0.5",
+]

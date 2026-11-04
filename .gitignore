@@ -1,0 +1,32 @@
+.palette/
+.env
+.env.local
+.env.production
+node_modules
+.env.*.local
+.palette/dev/
+.palette/dev-storage/
+.palette/last-publish.json
+*.sqlite
+*.sqlite3
+*.db
+__pycache__/
+*.py[cod]
+frontend/tsconfig.tsbuildinfo
+dist/
+.DS_Store
+# Service-account / API credentials — never commit. Only used locally by
+# `pltt dev`; never referenced by app code and never bundled by `pltt package`/publish.
+credentials.json
+*credentials*.json
+service-account*.json
+gcs-key*.json
+# Per-machine Claude Code permission settings
+**/.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
+# build-css.mjs intermediates
+frontend/app/.tw.css
+frontend/app/.themed.css
+
+.superpowers

@@ -1,0 +1,64 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { Play, Pause, Plus, RotateCcw, Save, Video, ImageIcon } from 'lucide-react';
+import type { Asset, Scene } from '@/lib/palette/model';
+import { useI18n } from '@/lib/i18n';
+import { cameraPresets, cameraPose, clamp, defaultCameraMotion, editCameraKeyframe, presetKeyframes, type CameraMotion, type CameraKeyframe, type CameraPreset } from '@/lib/palette/camera-motion';
+
+type Props={scene:Scene;assets:Asset[];onSave:(motion:CameraMotion)=>void;onGenerate?:(motion:CameraMotion)=>void;canGenerate?:boolean};
+export function CameraControls({scene,assets,onSave,onGenerate,canGenerate=false}:Props){
+ const {t}=useI18n();
+ const available=assets.filter(a=>a.type!=='audio');
+ const [motion,setMotion]=useState<CameraMotion>(()=>structuredClone(scene.cameraMotion||defaultCameraMotion(available.some(a=>a.id===scene.assetId)?scene.assetId:available[0]?.id||'')));
+ const [selected,setSelected]=useState(motion.keyframes[0].id),[time,setTime]=useState(0),[playing,setPlaying]=useState(false),[view,setView]=useState({yaw:-25,pitch:27}),[saved,setSaved]=useState(false);
+ const svg=useRef<SVGSVGElement>(null),timeline=useRef<HTMLDivElement>(null);
+ const gesture=useRef<{kind:'camera'|'view'|'time';x:number;y:number;orbit:number;elevation:number;yaw:number;pitch:number;id:string}|null>(null);
+ const frame=motion.keyframes.find(f=>f.id===selected)||motion.keyframes[0],asset=available.find(a=>a.id===motion.assetId);
+ const update=(patch:Partial<CameraMotion>)=>{setPlaying(false);setSaved(false);setMotion(m=>({...m,...patch}))};
+ const edit=(id:string,patch:Partial<CameraKeyframe>)=>{if(patch.time!==undefined)setTime(editCameraKeyframe(motion.keyframes,id,patch).find(f=>f.id===id)!.time);setPlaying(false);setSaved(false);setMotion(m=>({...m,preset:'Custom path',keyframes:editCameraKeyframe(m.keyframes,id,patch)}))};
+ useEffect(()=>{if(!playing)return;const start=performance.now()-time/100*motion.duration*1000;let raf=0;const tick=()=>{const value=Math.min(100,(performance.now()-start)/(motion.duration*10));setTime(value);if(value>=100)setPlaying(false);else raf=requestAnimationFrame(tick)};raf=requestAnimationFrame(tick);return()=>cancelAnimationFrame(raf)},[playing,motion.duration]);
+ useEffect(()=>{const el=svg.current;if(!el)return;const wheel=(e:WheelEvent)=>{e.preventDefault();edit(frame.id,{distance:frame.distance-e.deltaY*.002});setTime(frame.time)};el.addEventListener('wheel',wheel,{passive:false});return()=>el.removeEventListener('wheel',wheel)},[frame.id,frame.distance,frame.time]);
+ const unit=93/Math.max(1,...motion.keyframes.map(f=>f.distance));
+ const radians=(n:number)=>n*Math.PI/180;
+ const project=(x:number,y:number,z:number)=>{const yaw=radians(view.yaw),pitch=radians(view.pitch),rx=x*Math.cos(yaw)-z*Math.sin(yaw),rz=x*Math.sin(yaw)+z*Math.cos(yaw);return {x:360+rx*unit,y:235+(rz*Math.sin(pitch)-y*Math.cos(pitch))*unit}};
+ const point=(f:Pick<CameraKeyframe,'orbit'|'elevation'|'distance'>)=>{const o=radians(f.orbit),e=radians(f.elevation),r=f.distance*1.8;return project(Math.sin(o)*Math.cos(e)*r,Math.sin(e)*r,Math.cos(o)*Math.cos(e)*r)};
+ const pose=cameraPose(motion.keyframes,time),camera=point(pose),center=project(0,0,0);
+ const path=Array.from({length:101},(_,i)=>point(cameraPose(motion.keyframes,i))).map((p,i)=>`${i?'L':'M'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+ const pick=(f:CameraKeyframe)=>{setSelected(f.id);setTime(f.time);setPlaying(false)};
+ const add=()=>{const near=motion.keyframes.find(f=>Math.abs(f.time-time)<1);if(near){pick(near);return}if(motion.keyframes.length>=12)return;const f={...cameraPose(motion.keyframes,time),id:crypto.randomUUID(),time:Math.round(time)};update({preset:'Custom path',keyframes:[...motion.keyframes,f].sort((a,b)=>a.time-b.time)});setSelected(f.id);setTime(f.time)};
+ const start=(e:React.PointerEvent,kind:'camera'|'view'|'time',f=frame)=>{if(e.button!==0||!e.isPrimary)return;e.preventDefault();e.stopPropagation();e.currentTarget.setPointerCapture(e.pointerId);setPlaying(false);if(kind!=='view')pick(f);gesture.current={kind,x:e.clientX,y:e.clientY,orbit:f.orbit,elevation:f.elevation,yaw:view.yaw,pitch:view.pitch,id:f.id}};
+ const move=(e:React.PointerEvent)=>{const g=gesture.current;if(!g)return;e.preventDefault();const dx=e.clientX-g.x,dy=e.clientY-g.y;if(g.kind==='view')setView({yaw:g.yaw+dx*.4,pitch:clamp(g.pitch-dy*.25,12,75)});else if(g.kind==='camera')edit(g.id,{orbit:g.orbit+dx*.6,elevation:g.elevation-dy*.35});else{const bounds=timeline.current!.getBoundingClientRect();const t=clamp((e.clientX-bounds.left)/bounds.width*100,0,100);edit(g.id,{time:Math.round(t)});const i=motion.keyframes.findIndex(f=>f.id===g.id);setTime(i===0?0:i===motion.keyframes.length-1?100:clamp(t,motion.keyframes[i-1].time+1,motion.keyframes[i+1].time-1))}};
+ const end=()=>{gesture.current=null};
+ const save=()=>{onSave(motion);setSaved(true)};
+ return <div className="camera-controls">
+  <p className="camera-intro">{t('Build a camera path around the first frame. The scene stays fixed; only the camera moves.')}</p>
+  <div className="camera-layout"><div className="camera-main">
+   <label className="camera-field">{t('First frame')}<select aria-label={t('Camera first frame')} value={motion.assetId} onChange={e=>update({assetId:e.target.value})}>{!asset&&<option value="">{t('Select an image or video')}</option>}{available.map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label>
+   <div className="camera-stage"><div className="camera-stage-label">{t('CAMERA PATH')} <span>{t('Path preview')}</span></div><button className="camera-view-reset icon-button" aria-label={t('Reset camera view')} title={t('Reset view')} onClick={()=>setView({yaw:-25,pitch:27})}><RotateCcw size={14}/></button>
+    <svg ref={svg} viewBox="0 0 720 400" aria-label={t('Interactive camera path')} onPointerDown={e=>start(e,'view')} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
+     {Array.from({length:9},(_,i)=>i*.6-2.4).map(n=>{const a=project(n,0,-2.4),b=project(n,0,2.4),c=project(-2.4,0,n),d=project(2.4,0,n);return <g key={n} className="camera-grid" strokeWidth="1"><line x1={a.x} y1={a.y} x2={b.x} y2={b.y}/><line x1={c.x} y1={c.y} x2={d.x} y2={d.y}/></g>})}
+     <line x1={center.x} y1={center.y} x2={center.x} y2={center.y-70} className="camera-axis"/>
+     <path d={path} className="camera-path" fill="none" strokeWidth="2.5"/>
+     <foreignObject x={center.x-66} y={center.y-120} width="132" height="78"><div className="camera-subject">{asset?.type==='image'||asset?.poster?<img src={asset.poster||asset.src} alt={asset.name} draggable={false}/>:asset?<video src={asset.src} muted playsInline preload="metadata"/>:<ImageIcon size={25}/>}</div></foreignObject>
+     {motion.keyframes.map((f,i)=>{const p=point(f);return <circle key={f.id} cx={p.x} cy={p.y} r={f.id===selected?7:5} className={`camera-keyframe ${f.id===selected?'is-selected':''}`} strokeWidth="2" role="button" tabIndex={0} aria-label={t('Select camera keyframe {n}',{n:i+1})} onPointerDown={e=>start(e,'camera',f)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick(f)}}}><title>{t('Keyframe {n}',{n:i+1})}</title></circle>})}
+     <line x1={camera.x} y1={camera.y} x2={center.x} y2={center.y-45} className="camera-sightline" strokeDasharray="4 5" opacity=".45" pointerEvents="none"/>
+     <g transform={`translate(${camera.x},${camera.y})`} className="camera-marker" role="button" tabIndex={0} aria-label={t('Drag camera position')} onPointerDown={e=>start(e,'camera')} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();edit(frame.id,{orbit:frame.orbit+(e.key==='ArrowRight'?5:e.key==='ArrowLeft'?-5:0),elevation:frame.elevation+(e.key==='ArrowUp'?5:e.key==='ArrowDown'?-5:0)});setTime(frame.time)}}}><rect x="-16" y="-13" width="40" height="26" fill="transparent"/><rect x="-13" y="-8" width="21" height="16" rx="2" className="camera-glyph"/><path d="M8,-4 L16,-8 L16,8 L8,4 Z" className="camera-glyph"/></g>
+    </svg>
+   </div>
+   <p className="camera-help">{t('Drag the camera or points: position · Scroll: distance · Drag the background: rotate view')}<br/>{t('This previews the path only. The saved path is used when you generate a camera move.')}</p>
+   <div className="camera-playback"><button className="secondary" disabled={!asset} onClick={()=>{if(time>=100)setTime(0);setPlaying(v=>!v)}}>{playing?<Pause size={13}/>:<Play size={13}/>} {t(playing?'Pause path':'Play path')}</button><input type="range" aria-label={t('Camera path playhead')} min="0" max="100" step=".1" value={time} onChange={e=>{setPlaying(false);setTime(Number(e.target.value))}}/><output>{(time/100*motion.duration).toFixed(1)}s / {motion.duration}s</output></div>
+   <div className="camera-keyframe-track" ref={timeline}><div className="camera-keyframe-line"/>{motion.keyframes.map((f,i)=><button key={f.id} className={f.id===selected?'selected':''} style={{left:`${f.time}%`}} aria-label={t('Camera keyframe {n} at {t}%',{n:i+1,t:f.time})} title={t('Keyframe {n} · {t}%',{n:i+1,t:f.time})} onClick={()=>pick(f)} onPointerDown={e=>start(e,'time',f)} onPointerMove={move} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}><span/></button>)}</div>
+   <div className="camera-keyframe-actions"><button className="secondary" onClick={add} disabled={motion.keyframes.length>=12}><Plus size={13}/>{t('Add keyframe here')}</button><button className="secondary" disabled={frame.time===0||frame.time===100} onClick={()=>{const remaining=motion.keyframes.filter(f=>f.id!==frame.id);update({preset:'Custom path',keyframes:remaining});pick(remaining[0])}}>{t('Remove keyframe')}</button><span>{t('Keyframe {i} of {n}',{i:motion.keyframes.findIndex(f=>f.id===frame.id)+1,n:motion.keyframes.length})}</span></div>
+   <div className="camera-keyframe-fields">{([{key:'time',label:'Time (%)',min:0,max:100,step:1},{key:'orbit',label:'Orbit (°)',min:-720,max:720,step:1},{key:'elevation',label:'Elevation (°)',min:-80,max:80,step:1},{key:'distance',label:'Distance',min:.3,max:3,step:.05}] as const).map(({key,label,min,max,step})=><label className="camera-field" key={key}>{t(label)}<input aria-label={t('Camera {label}',{label:t(label)})} type="number" min={min} max={max} step={step} disabled={key==='time'&&(frame.time===0||frame.time===100)} value={Math.round(frame[key]*100)/100} onChange={e=>{if(e.target.value==='')return;edit(frame.id,{[key]:e.target.valueAsNumber});if(key!=='time')setTime(frame.time)}}/></label>)}</div>
+  </div><aside className="camera-options">
+   <label className="camera-field">{t('Motion preset')}<select aria-label={t('Camera motion preset')} value={motion.preset} onChange={e=>{const preset=e.target.value as CameraPreset;if(preset==='Custom path'){update({preset});return}const keyframes=presetKeyframes(preset);update({preset,keyframes});pick(keyframes[0])}}>{cameraPresets.map(p=><option key={p} value={p}>{t(p)}</option>)}</select></label>
+   <label className="camera-field">{t('Duration')}<select aria-label={t('Camera duration')} value={motion.duration} onChange={e=>update({duration:Number(e.target.value)})}>{Array.from({length:11},(_,i)=>i+5).map(s=><option key={s} value={s}>{s}s</option>)}</select></label>
+   <label className="camera-field">{t('Resolution')}<select aria-label={t('Camera resolution')} value={motion.resolution} onChange={e=>update({resolution:e.target.value as CameraMotion['resolution']})}>{['480P','768P','1080P'].map(r=><option key={r}>{r}</option>)}</select></label>
+   <label className="camera-field">{t('Scene instructions (optional)')}<textarea aria-label={t('Camera scene instructions')} rows={4} maxLength={2000} placeholder={t('Preserve the scene. Only the camera moves.')} value={motion.instructions} onChange={e=>update({instructions:e.target.value})}/></label>
+   <label className="camera-quality"><input type="checkbox" checked={motion.qualityRetry} onChange={e=>update({qualityRetry:e.target.checked})}/>{t('Quality check + one retry')}</label>
+   <p className="camera-help">{t('Sets camera motion that keeps the people and place in the first frame.')}</p>
+   {!canGenerate&&<div className="camera-provider-note"><strong>{t('Camera moves aren’t available right now.')}</strong><p>{t('You can still design and save a camera path for this scene.')}</p></div>}
+   <div className="camera-submit"><span role="status">{t(saved?'경로가 저장되었습니다.':'장면별로 카메라 경로를 저장합니다.')}</span><button className="primary" onClick={save} disabled={!asset}><Save size={14}/>{t('Save camera path')}</button><button className="secondary" disabled={!asset||!canGenerate||!onGenerate} title={canGenerate?undefined:t('Camera moves aren’t available right now.')} onClick={()=>{save();onGenerate?.(motion)}}><Video size={14}/>{t('Generate camera move')}</button></div>
+  </aside></div>
+ </div>;
+}
